@@ -3,7 +3,8 @@
 
 A streamer locks an amount and a duration; tokens accrue to the receiver
 continuously until the stream ends or is stopped. The receiver withdraws
-whatever has accrued at any time.
+whatever has accrued at any time, and the payout is a real transfer of value
+out of the contract — not just an accounting entry.
 
 Studio runtime notes (GenVM v0.3.0-rc7):
   * base class is `gl.contract.Contract`
@@ -14,15 +15,30 @@ Studio runtime notes (GenVM v0.3.0-rc7):
     runtime with `GenerationError`
   * `TreeMap[str, list]` is rejected by the schema generator — lists are
     stored as a `DynArray[str]` index
+  * the caller is `gl.message.sender_address`, an `Address` object (not a
+    str) that does not agree with `self.address` on EIP-55 casing
+  * `self.balance` is the contract's held value; `@gl.public.write.payable`
+    plus `gl.message.value` accepts inbound value
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import genlayer as gl
-from genlayer import u256
+from genlayer import Address, u256
 from genlayer.storage import DynArray, TreeMap
 from genlayer.storage import allow as allow_storage
+
+
+@gl.evm.contract_interface
+class _EoaWallet:
+    """Official IC -> EOA payout path: an empty interface, emit_transfer sends."""
+
+    class View:
+        pass
+
+    class Write:
+        pass
 
 
 def _now() -> int:
@@ -150,17 +166,27 @@ class StreamPay(gl.contract.Contract):
 
     @gl.public.write
     def withdraw(self, stream_id: str) -> u256:
-        """Receiver withdraws everything accrued so far."""
+        """Receiver withdraws accrued funds, transferring real value out."""
         stream = self.streams.get(stream_id)
         if not stream:
-            raise Exception("stream not found")
+            raise gl.vm.UserError("stream not found")
         if self._strip(stream.receiver) != self._strip(self._sender()):
-            raise Exception("only the receiver can withdraw")
+            raise gl.vm.UserError("only the receiver can withdraw")
 
         accumulated = self._accumulated(stream)
         payable_now = accumulated - stream.withdrawn
         if payable_now <= u256(0):
             return u256(0)
+
+        # Real payout. An under-funded emit_transfer succeeds silently and
+        # moves nothing, so refuse rather than record a withdrawal that
+        # never reached the receiver.
+        if self.balance < payable_now:
+            raise gl.vm.UserError("insufficient escrowed balance")
+
+        _EoaWallet(Address(bytes.fromhex(stream.receiver[2:]))).emit_transfer(
+            value=payable_now
+        )
 
         stream.withdrawn += payable_now
         if stream.status == "active" and stream.end_time > u256(0):
@@ -168,6 +194,25 @@ class StreamPay(gl.contract.Contract):
                 stream.status = "withdrawn"
         self.streams[stream_id] = stream
         return payable_now
+
+    # ---------- funding ----------
+
+    @gl.public.write.payable
+    def fund(self) -> u256:
+        """Escrow GEN into the contract to back future payouts.
+
+        The Studio UI shows a "Value (GEN)" field for payable methods; that
+        value arrives as `gl.message.value` and is added to `self.balance`.
+        """
+        v = gl.message.value
+        if v == u256(0):
+            raise gl.vm.UserError("no value sent")
+        return v
+
+    @gl.public.view
+    def escrowed(self) -> u256:
+        """Value currently held by the contract, available for payouts."""
+        return self.balance
 
     # ---------- view ----------
 
