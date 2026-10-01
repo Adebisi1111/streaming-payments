@@ -66,6 +66,10 @@ class StreamPay(gl.contract.Contract):
     def _me(self) -> str:
         return self.address.as_hex
 
+    def _sender(self) -> str:
+        """Address that submitted the current transaction."""
+        return gl.message.sender_address
+
     def _accumulated(self, stream: StreamState) -> u256:
         if stream.status == "withdrawn":
             return stream.withdrawn
@@ -137,7 +141,7 @@ class StreamPay(gl.contract.Contract):
         stream = self.streams.get(stream_id)
         if not stream:
             raise Exception("stream not found")
-        if self._strip(stream.receiver) != self._me():
+        if self._strip(stream.receiver) != self._strip(self._sender()):
             raise Exception("only the receiver can withdraw")
 
         accumulated = self._accumulated(stream)

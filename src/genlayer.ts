@@ -10,7 +10,7 @@
 
 export const RPC_URL = 'https://studio-dev.genlayer.com/api'
 export const STUDIO_URL = 'https://studio-next.genlayer.com'
-export const CONTRACT_ADDRESS = '0x77ba65D0b167A576D82Fc52779a6dbffBaAe9Be7'
+export const CONTRACT_ADDRESS = '0xcECA04a8EE2a0C4541265F89592784cA9f4ffCF2'
 export const ONE_GEN = 1000000000000000000n
 
 // ---------------------------------------------------------------------------
@@ -181,6 +181,10 @@ export interface StreamRecord {
   end_time: bigint
   withdrawn: bigint
   status: string
+  /** total that has accrued so far (contract-computed) */
+  accumulated: bigint
+  /** accumulated - withdrawn (contract-computed) */
+  available: bigint
 }
 
 /** Call a read method on the deployed contract. */
@@ -212,21 +216,28 @@ export async function callRead(
   return decodePayload(json.result)
 }
 
+/** Normalise a decoded contract record into a StreamRecord. */
+function toRecord(rec: Record<string, Decoded>, fallbackId: string): StreamRecord {
+  const num = (v: Decoded | undefined): bigint =>
+    typeof v === 'bigint' ? v : typeof v === 'number' ? BigInt(v) : 0n
+  return {
+    stream_id: String(rec.stream_id ?? fallbackId),
+    streamer: String(rec.streamer ?? ''),
+    receiver: String(rec.receiver ?? ''),
+    rate: num(rec.rate),
+    start_time: num(rec.start_time),
+    end_time: num(rec.end_time),
+    withdrawn: num(rec.withdrawn),
+    status: String(rec.status ?? 'unknown'),
+    accumulated: num(rec.accumulated),
+    available: num(rec.available),
+  }
+}
+
 export async function listStreams(address: string): Promise<StreamRecord[]> {
   const out = await callRead('list_streams', [address])
   if (!Array.isArray(out)) return []
-  // list_streams returns a compact projection; normalise it to StreamRecord so
-  // the UI can treat both read methods the same way.
-  return (out as Record<string, Decoded>[]).map((rec) => ({
-    stream_id: String(rec.stream_id ?? ''),
-    streamer: String(rec.streamer ?? ''),
-    receiver: String(rec.receiver ?? ''),
-    rate: BigInt((rec.rate as bigint | undefined) ?? 0),
-    start_time: BigInt((rec.start_time as bigint | undefined) ?? 0),
-    end_time: BigInt((rec.end_time as bigint | undefined) ?? 0),
-    withdrawn: BigInt((rec.withdrawn as bigint | undefined) ?? 0),
-    status: String(rec.status ?? 'unknown'),
-  }))
+  return (out as Record<string, Decoded>[]).map((rec) => toRecord(rec, ''))
 }
 
 export async function getStream(streamId: string): Promise<StreamRecord | null> {
@@ -234,16 +245,7 @@ export async function getStream(streamId: string): Promise<StreamRecord | null> 
   if (!out || typeof out !== 'object' || Array.isArray(out)) return null
   const rec = out as Record<string, Decoded>
   if (rec.error) return null
-  return {
-    stream_id: String(rec.stream_id ?? streamId),
-    streamer: String(rec.streamer ?? ''),
-    receiver: String(rec.receiver ?? ''),
-    rate: BigInt((rec.rate as bigint | undefined) ?? 0),
-    start_time: BigInt((rec.start_time as bigint | undefined) ?? 0),
-    end_time: BigInt((rec.end_time as bigint | undefined) ?? 0),
-    withdrawn: BigInt((rec.withdrawn as bigint | undefined) ?? 0),
-    status: String(rec.status ?? 'unknown'),
-  }
+  return toRecord(rec, streamId)
 }
 
 /** Read the deployed contract's balance (GEN). */
