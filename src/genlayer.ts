@@ -6,11 +6,11 @@
 //   * deploys and writes need a signed rollup transaction, so the browser
 //     delegates writes to the GenLayer Studio UI at studio-next.genlayer.com
 //
-// Verified against the live network: contract 0x77ba…9Be7 on Studio Next.
+// Verified against the live network: VeriTag at 0x9973a029…584f on studio-dev (61997).
 
 export const RPC_URL = 'https://studio-dev.genlayer.com/api'
 export const STUDIO_URL = 'https://studio-next.genlayer.com'
-export const CONTRACT_ADDRESS = '0xCfe4C1082CB61195d51Db48b871656FB3b5B4Ae4'
+export const CONTRACT_ADDRESS = '0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f'
 export const ONE_GEN = 1000000000000000000n
 
 // ---------------------------------------------------------------------------
@@ -178,10 +178,11 @@ export interface VerdictRecord {
   question: string
   /** 'supported' | 'refuted' | 'unverified' */
   verdict: string
-  excerpt: string
-  submitter: string
   timestamp: bigint
-  agreed_validators: string
+  /** present on get_verdict, omitted by list_claims */
+  excerpt?: string
+  submitter?: string
+  agreed_validators?: string
 }
 
 /** Call a read method on the deployed contract. */
@@ -246,6 +247,8 @@ export async function getVerdict(claimId: string): Promise<VerdictRecord | null>
 
 export async function totalClaims(): Promise<bigint> {
   const out = await callRead('total_claims')
+  // A zero count decodes as a bool (tag 1) rather than an int (tag 2).
+  if (typeof out === 'boolean') return out ? 1n : 0n
   if (typeof out === 'bigint') return out
   if (typeof out === 'number') return BigInt(out)
   return 0n

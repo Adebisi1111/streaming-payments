@@ -47,6 +47,7 @@ Storage notes (GenVM v0.3.0-rc7):
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import genlayer as gl
 from genlayer import u256
@@ -82,7 +83,13 @@ class VeriTag(gl.contract.Contract):
     # ---------- helpers ----------
 
     def _now(self) -> int:
-        return int(gl.message.current_timestamp) if hasattr(gl.message, "current_timestamp") else 0
+        """Transaction time.
+
+        GenVM pins the Python clock to the transaction timestamp, so every
+        validator re-executing this call sees the same value. There is no
+        `gl.message.current_timestamp` in this runtime.
+        """
+        return int(datetime.now(timezone.utc).timestamp())
 
     def _strip(self, addr: str) -> str:
         """Normalise an address: GenVM's sender and self.address disagree on
@@ -148,8 +155,10 @@ class VeriTag(gl.contract.Contract):
         if len(question) < 8:
             raise gl.vm.UserError("question is too short to verify")
 
-        stamp = u256(len(self.all_ids) + 1)
-        claim_id = "claim-" + str(stamp)
+        # The id is a monotonic counter; the timestamp is real wall-clock time.
+        # These are different things and were previously conflated.
+        seq = u256(len(self.all_ids) + 1)
+        claim_id = "claim-" + str(seq)
 
         def leader_fn():
             evidence = self._evidence_excerpt(url)
@@ -178,7 +187,7 @@ class VeriTag(gl.contract.Contract):
             verdict="supported" if supported == "yes" else "not_supported",
             excerpt=str(outcome.get("excerpt", ""))[:240],
             submitter=self._sender(),
-            timestamp=stamp,
+            timestamp=self._now(),
             agreed_validators="committee reached consensus",
         )
         self.all_ids.append(claim_id)

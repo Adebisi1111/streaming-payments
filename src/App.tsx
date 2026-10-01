@@ -18,10 +18,14 @@ import {
 
 type VerdictTone = 'supported' | 'refuted' | 'unverified'
 
+// The contract stores exactly "supported" or "not_supported". Match those
+// literally first so "not_supported" can never be read as "supported".
 function tone(v: string): VerdictTone {
-  const s = (v || '').toLowerCase()
-  if (s.includes('support') || s === 'true' || s === 'yes') return 'supported'
-  if (s.includes('refut') || s === 'false' || s === 'no') return 'refuted'
+  const s = (v || '').trim().toLowerCase()
+  if (s === 'supported') return 'supported'
+  if (s === 'not_supported') return 'refuted'
+  if (s === 'true' || s === 'yes') return 'supported'
+  if (s === 'false' || s === 'no') return 'refuted'
   return 'unverified'
 }
 
@@ -57,10 +61,23 @@ export default function App() {
     setLoading(true)
     setStatus('reading the registry…')
     try {
-      const [c, n] = await Promise.all([listClaims(), totalClaims()])
-      setClaims(c)
+      const [summaries, n] = await Promise.all([listClaims(), totalClaims()])
+      // list_claims returns id/question/url/verdict/timestamp only. The evidence
+      // excerpt and submitter live behind get_verdict, so hydrate each entry —
+      // that evidence is the whole point of the registry, so show it.
+      const detailed = await Promise.all(
+        summaries.map(async (c) => {
+          try {
+            const full = await getVerdict(c.claim_id)
+            return full ?? c
+          } catch {
+            return c
+          }
+        }),
+      )
+      setClaims(detailed)
       setCount(n)
-      setStatus(`read ${c.length} claim(s) from chain`)
+      setStatus(`read ${detailed.length} claim(s) from chain`)
     } catch (e) {
       setStatus(`read failed: ${(e as Error).message}`)
     } finally {
