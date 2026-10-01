@@ -10,7 +10,7 @@
 
 export const RPC_URL = 'https://studio-dev.genlayer.com/api'
 export const STUDIO_URL = 'https://studio-next.genlayer.com'
-export const CONTRACT_ADDRESS = '0x88668efE0255DE94979595Bda111DeBD1E0DB8Cb'
+export const CONTRACT_ADDRESS = '0xCfe4C1082CB61195d51Db48b871656FB3b5B4Ae4'
 export const ONE_GEN = 1000000000000000000n
 
 // ---------------------------------------------------------------------------
