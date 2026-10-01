@@ -57,11 +57,16 @@ class StreamPay(gl.contract.Contract):
     # ---------- helpers ----------
 
     def _strip(self, addr: str) -> str:
-        """Normalise `addr#...` or bare hex to a plain hex string."""
+        """Normalise an address for comparison.
+
+        Accepts `addr#0x...` and bare hex, and lower-cases it: GenVM's
+        `sender_address` and `self.address` do not agree on EIP-55 checksum
+        casing, so an exact-match guard would always fail.
+        """
         a = addr.strip()
         if a.startswith("addr#"):
             a = a[5:]
-        return a
+        return a.lower()
 
     def _me(self) -> str:
         return self.address.as_hex
