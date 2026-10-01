@@ -1,10 +1,37 @@
 # { "Depends": "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" }
-"""StreamPay — streaming payments Intelligent Contract (GenLayer Studio).
+"""StreamPay — a verifiable streaming-payment ledger (GenLayer Studio).
 
-A streamer locks an amount and a duration; tokens accrue to the receiver
-continuously until the stream ends or is stopped. The receiver withdraws
-whatever has accrued at any time, and the payout is a real transfer of value
-out of the contract — not just an accounting entry.
+WHAT THIS CONTRACT IS
+    A streamer opens a stream (receiver, total amount in wei, duration). The
+    contract derives an exact per-second rate and, over time, accrues that
+    rate to the receiver. The receiver may claim the accrued portion at any
+    time; only the streamer may stop a stream early.
+
+    The contract's job is the *entitlement ledger*: computing what is owed,
+    to whom, and when — with tamper evidence supplied by GenLayer consensus.
+    Every state transition is a consensus-verified write.
+
+VERIFIED ON-CHAIN
+    * create_stream / get_stream / list_streams
+    * exact rate arithmetic (5e18 // 3600 == 1388888888888888)
+    * stop_stream freezes end_time and halts accrual at that instant
+    * partial withdraw claims only what has accrued, never more
+    * access control on both stop and withdraw
+    * guards: zero-rate streams rejected, over-withdrawal rejected
+
+NOT CLAIMED — READ THIS BEFORE SUBMITTING
+    This contract does NOT prove that GEN reaches the receiver's wallet on
+    Studio dev. `emit_transfer` is invoked in `withdraw`, and the Studio dev
+    chain states in its own UI that token transfers are not yet supported:
+
+        "The Studio currently does not support token transfers,
+         contract-to-contract interactions, or gas consumption."
+
+    An `emit_transfer` there finalises without moving any balance. Treat
+    payout as a documented chain-layer boundary, not a contract guarantee and
+    not a contract bug. The internal accounting is complete and correct
+    regardless; `emit_transfer` is the intended path once the chain supports
+    it. Do not describe this project as "payments that move funds".
 
 Studio runtime notes (GenVM v0.3.0-rc7):
   * base class is `gl.contract.Contract`
@@ -19,6 +46,8 @@ Studio runtime notes (GenVM v0.3.0-rc7):
     str) that does not agree with `self.address` on EIP-55 casing
   * `self.balance` is the contract's held value; `@gl.public.write.payable`
     plus `gl.message.value` accepts inbound value
+  * `TreeMap.get()` returns a detached value: every mutation must be written
+    back with `self.streams[stream_id] = stream`
 """
 
 from dataclasses import dataclass
@@ -168,7 +197,13 @@ class StreamPay(gl.contract.Contract):
 
     @gl.public.write
     def withdraw(self, stream_id: str) -> u256:
-        """Receiver withdraws accrued funds, transferring real value out."""
+        """Receiver claims the portion accrued so far. Returns that amount.
+
+        This records the entitlement and invokes `emit_transfer`. On Studio
+        dev the transfer call finalises but moves no balance (the chain does
+        not support token transfers there yet), so the returned value is an
+        accrued claim, not a confirmed wallet credit.
+        """
         stream = self.streams.get(stream_id)
         if not stream:
             raise gl.vm.UserError("stream not found")
@@ -180,12 +215,13 @@ class StreamPay(gl.contract.Contract):
         if payable_now <= u256(0):
             return u256(0)
 
-        # Real payout. An under-funded emit_transfer succeeds silently and
-        # moves nothing, so refuse rather than record a withdrawal that
-        # never reached the receiver.
+        # Never record a claim the contract could not have honoured. An
+        # under-funded emit_transfer succeeds silently and moves nothing.
         if self.balance < payable_now:
             raise gl.vm.UserError("insufficient escrowed balance")
 
+        # Intended settlement path. Requires a chain that supports
+        # IC -> EOA value transfer; Studio dev does not (see module docstring).
         _EoaWallet(Address(bytes.fromhex(stream.receiver[2:]))).emit_transfer(
             value=payable_now
         )

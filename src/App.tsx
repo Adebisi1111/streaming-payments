@@ -70,7 +70,7 @@ export default function App() {
               <text x="17" y="18" fontFamily="monospace" fontSize="10" fontWeight="bold" fill="#38bdf8">{'\\}'}</text>
             </svg>
             <h1 className="text-lg font-semibold">StreamPay</h1>
-            <span className="text-xs text-gray-500">GenLayer Streaming Payments</span>
+            <span className="text-xs text-gray-500">GenLayer Streaming-Payment Ledger</span>
           </div>
           <div className="text-xs text-gray-500 font-mono">{CONTRACT_ADDRESS}</div>
         </div>
@@ -78,11 +78,16 @@ export default function App() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-2">Streaming Payments on GenLayer</h2>
+          <h2 className="text-2xl font-bold mb-2">Streaming-Payment Ledger on GenLayer</h2>
           <p className="text-gray-400 text-sm max-w-2xl">
-            Create continuous token streams between addresses. The streamer sets an amount and duration;
-            tokens flow continuously until the stream ends or is stopped. The receiver can withdraw
-            accumulated tokens at any time.
+            Create a stream between two addresses. The streamer sets an amount and duration; the contract
+            accrues an exact per-second entitlement to the receiver, and the receiver can claim whatever
+            has accrued at any time. Every state change is a GenLayer consensus-verified write.
+          </p>
+          <p className="text-amber-500/80 text-xs max-w-2xl mt-3 border border-amber-700/40 bg-amber-950/20 rounded-lg px-3 py-2">
+            <strong>Payout boundary:</strong> this contract computes and records what is owed. On Studio dev,
+            GEN transfer is not yet supported by the chain, so a claim records an entitlement rather than
+            crediting a wallet. See the contract docstring for the full verified / not-verified boundary.
           </p>
         </div>
 
@@ -107,7 +112,7 @@ export default function App() {
                 <button onClick={handleViewStream} disabled={loading} className="py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800/50 disabled:cursor-not-allowed text-sm font-medium rounded-lg transition-colors">{loading ? 'Loading...' : 'View Stream'}</button>
                 <button onClick={handleStopStream} disabled={loading || !streamId} className="py-2 bg-orange-600 hover:bg-orange-500 disabled:bg-gray-800/50 disabled:cursor-not-allowed text-sm font-medium rounded-lg transition-colors">Stop Stream</button>
               </div>
-              <button onClick={handleWithdraw} disabled={loading || !streamId} className="w-full py-2 bg-green-600 hover:bg-green-500 disabled:bg-gray-800/50 disabled:cursor-not-allowed text-sm font-medium rounded-lg transition-colors">{loading ? 'Withdrawing...' : 'Withdraw'}</button>
+              <button onClick={handleWithdraw} disabled={loading || !streamId} className="w-full py-2 bg-green-600 hover:bg-green-500 disabled:bg-gray-800/50 disabled:cursor-not-allowed text-sm font-medium rounded-lg transition-colors">{loading ? 'Claiming...' : 'Claim Accrued'}</button>
             </div>
           </div>
         </div>
@@ -152,7 +157,7 @@ export default function App() {
                 <div><span className="text-gray-500 block text-xs">Rate</span><p className="font-mono text-gray-200">{formatU256(stream.rate)} / sec</p></div>
                 <div><span className="text-gray-500 block text-xs">Available</span><p className="font-mono text-gray-200">{formatU256(stream.available || 0)}</p></div>
                 <div><span className="text-gray-500 block text-xs">Accumulated</span><p className="font-mono text-gray-200">{formatU256(stream.accumulated || 0)}</p></div>
-                <div><span className="text-gray-500 block text-xs">Withdrawn</span><p className="font-mono text-gray-200">{formatU256(stream.withdrawn || 0)}</p></div>
+                <div><span className="text-gray-500 block text-xs">Claimed</span><p className="font-mono text-gray-200">{formatU256(stream.withdrawn || 0)}</p></div>
                 <div><span className="text-gray-500 block text-xs">Started</span><p className="font-mono text-gray-200">{formatTime(stream.start_time)}</p></div>
                 <div><span className="text-gray-500 block text-xs">Ends</span><p className="font-mono text-gray-200">{stream.end_time > 0 ? formatTime(stream.end_time) : 'Never'}</p></div>
               </div>
@@ -168,7 +173,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-gray-800/60 mt-12 py-6 text-center text-xs text-gray-600">
-        StreamPay · GenLayer Streaming Payments · Contract {CONTRACT_ADDRESS.slice(0,16)}...
+        StreamPay · GenLayer streaming-payment ledger · Contract {CONTRACT_ADDRESS.slice(0,16)}...
       </footer>
     </div>
   )
