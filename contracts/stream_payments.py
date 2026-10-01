@@ -120,10 +120,11 @@ class StreamPay(gl.contract.Contract):
 
         now_ts = u256(_now())
         rate = amount // duration_seconds
-        stream_id = f"{self._me()}-{rcv}-{now_ts}"
+        streamer = self._strip(self._sender())
+        stream_id = f"{streamer}-{rcv}-{now_ts}"
 
         self.streams[stream_id] = StreamState(
-            streamer=self._me(),
+            streamer=streamer,
             receiver=rcv,
             rate=rate,
             start_time=now_ts,
