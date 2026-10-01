@@ -1,39 +1,16 @@
 import { useState } from 'react'
+import { CONTRACT_ADDRESS, listStreams, getStream, type StreamRecord } from './genlayer'
 
-const CONTRACT_ADDRESS = '0xE08E5C82DeF279FE3f8A7A1771919cca0eFcC0f8'
-const RPC_URL = 'https://studio.genlayer.com/api'
-const ONE_GEN = 1000000000000000000n
-
-function callContract(calldata: string): Promise<string> {
-  return fetch(RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'eth_call',
-      params: [{ to: CONTRACT_ADDRESS, data: calldata }, 'latest'],
-    }),
-  }).then(r => r.json()).then(r => r.result || '0x')
-}
-
-function hexToUtf8(hex: string): string {
-  try {
-    const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)))
-    return new TextDecoder().decode(bytes)
-  } catch { return '' }
-}
-
-function formatU256(val: string | number | bigint): string {
+function formatU256(val: string | number | bigint | null | undefined): string {
+  if (val === null || val === undefined) return '0'
   const n = BigInt(val)
-  if (n > ONE_GEN) return (Number(n) / Number(ONE_GEN)).toFixed(4) + ' GEN'
+  if (n >= 1000000000000000000n) return (Number(n) / 1e18).toFixed(4) + ' GEN'
   return n.toString()
 }
 
 function formatTime(ts: string | number | bigint): string {
   if (!ts || ts === '0') return '—'
-  const d = new Date(Number(BigInt(ts)) * 1000)
-  return d.toLocaleString()
+  return new Date(Number(BigInt(ts)) * 1000).toLocaleString()
 }
 
 export default function App() {
@@ -49,7 +26,7 @@ export default function App() {
 
   const handleCreateStream = () => {
     if (!creator || !receiver || !amount || !durationSec) { setResult('Fill all fields'); return }
-    const amt = BigInt(amount) * ONE_GEN
+    const amt = BigInt(amount) * 1000000000000000000n
     setResult('Create: receiver=' + receiver + ', amount=' + formatU256(amt) + ', duration=' + durationSec + 's')
     setStreamId('stream-' + Date.now())
   }
@@ -58,13 +35,9 @@ export default function App() {
     if (!streamId) { setResult('Enter stream ID'); return }
     setLoading(true); setResult('')
     try {
-      const res = await callContract('get_stream(' + JSON.stringify(streamId) + ')')
-      const data = hexToUtf8(res)
-      if (data) {
-        const parsed = JSON.parse(data)
-        if (parsed.error) { setResult('Stream not found'); setStream(null) }
-        else { setStream(parsed); setResult('Stream loaded') }
-      } else { setResult('Stream not found'); setStream(null) }
+      const rec = await getStream(streamId)
+      if (rec) { setStream(rec); setResult('Stream loaded') }
+      else { setResult('Stream not found'); setStream(null) }
     } catch (e: any) { setResult('Error: ' + e.message); setStream(null) }
     setLoading(false)
   }
@@ -73,13 +46,9 @@ export default function App() {
     if (!creator) { setResult('Enter address'); return }
     setLoading(true); setResult('')
     try {
-      const res = await callContract('list_streams(' + JSON.stringify(creator) + ')')
-      const data = hexToUtf8(res)
-      if (data) {
-        const parsed = JSON.parse(data)
-        if (Array.isArray(parsed) && parsed.length > 0) { setStreams(parsed); setResult('Found ' + parsed.length + ' stream(s)') }
-        else { setResult('No streams found'); setStreams([]) }
-      } else { setResult('No streams found'); setStreams([]) }
+      const recs = await listStreams(creator)
+      if (recs.length > 0) { setStreams(recs); setResult('Found ' + recs.length + ' stream(s)') }
+      else { setResult('No streams found'); setStreams([]) }
     } catch (e: any) { setResult('Error: ' + e.message); setStreams([]) }
     setLoading(false)
   }
