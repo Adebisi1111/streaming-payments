@@ -23,24 +23,32 @@ submitter and a timestamp are recorded on-chain.
 
 ## Verified working
 
-Deployed and exercised against the live network. A real claim was submitted and
-resolved by AI consensus:
+Deployed and exercised against the live network. Three claims, both verdict
+outcomes, one rejected transaction:
 
-| Field | On-chain value |
-|---|---|
-| `claim_id` | `claim-1` |
-| `question` | Does this page mention Python downloads? |
-| `url` | https://www.python.org/downloads/ |
-| `verdict` | `supported` |
-| `excerpt` | `<!doctype html> <html class="no-js" lang="en" …` |
-| `submitter` | `0x61fd0047595a30a067f1f21f3b28c4ae8a8e3dc3` |
-| `timestamp` | 2026-10-01T15:42:51Z (transaction time) |
-| `consensus` | committee reached consensus |
+| Claim | Question (about python.org/downloads) | Verdict |
+|---|---|---|
+| `claim-1` | Does this page mention Python downloads? | `supported` |
+| `claim-2` | Does this page describe Antarctic penguin migration patterns? | `not_supported` |
+| `claim-3` | *(same question, re-submitted)* | `not_supported` |
 
-A second claim — *"Does this page list Python 3.13 as a stable release?"* —
-against the same URL was **refused with no majority**: the committee split, so
-nothing was written. That is the intended behaviour. A verdict only exists when
-the validators agree.
+Each record carries the evidence excerpt, the submitter
+(`0x61fd0047…e3dc3`), a real transaction timestamp and the consensus result.
+The committee distinguishes **true from false claims about the same page** —
+it is not rubber-stamping everything as supported.
+
+**A bad URL is rejected cleanly.** Submitting `https://example.invalid/…`
+produced `FINISHED_WITH_ERROR` on the leader and wrote nothing to the registry.
+An unreachable page cannot manufacture a verdict.
+
+**A split committee writes nothing.** An earlier claim — *"Does this page list
+Python 3.13 as a stable release?"* — was decided `UNDETERMINED`, no validator
+majority, and no record was created. A verdict only exists when validators agree.
+
+The live frontend at <https://adebisi1111.github.io/streaming-payments/> was
+browser-verified against the deployed contract: it reads 3 claims, renders green
+`supported` and red `refuted` badges distinctly, and shows the evidence excerpt
+on every card.
 
 ## Why this needs GenLayer
 
