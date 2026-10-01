@@ -63,7 +63,7 @@ class StreamPay(gl.contract.Contract):
         `sender_address` and `self.address` do not agree on EIP-55 checksum
         casing, so an exact-match guard would always fail.
         """
-        a = addr.strip()
+        a = str(addr).strip()
         if a.startswith("addr#"):
             a = a[5:]
         return a.lower()
@@ -72,8 +72,12 @@ class StreamPay(gl.contract.Contract):
         return self.address.as_hex
 
     def _sender(self) -> str:
-        """Address that submitted the current transaction."""
-        return gl.message.sender_address
+        """Address that submitted the current transaction.
+
+        `gl.message.sender_address` is an `Address`, not a str — calling
+        `.strip()` on it directly raises, so coerce via `str()`.
+        """
+        return str(gl.message.sender_address)
 
     def _accumulated(self, stream: StreamState) -> u256:
         if stream.status == "withdrawn":
