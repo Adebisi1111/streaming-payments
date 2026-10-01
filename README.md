@@ -14,7 +14,7 @@ independently — each does its own fetch and forms its own judgement — and
 consensus only commits when they agree. The verdict, the evidence excerpt, the
 submitter and a timestamp are recorded on-chain.
 
-- **Live app**: <https://adebisi1111.github.io/veritag/>
+- **Live app**: <https://adebisi1111.github.io/streaming-payments/>
 - **Deployed contract**: `0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f`
 - **Network**: GenLayer Studio **dev** (chain `61997`), RPC `https://studio-dev.genlayer.com/api`
 - **Source**: [`contracts/veritag.py`](contracts/veritag.py)
