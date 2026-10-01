@@ -111,9 +111,7 @@ export default function App() {
     <div className="min-h-screen bg-[#0a0a0f] text-gray-200">
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-sm font-bold">
-            V
-          </div>
+          <img src="/logo.svg" alt="VeriTag" className="w-8 h-8 block shrink-0" />
           <div>
             <h1 className="font-semibold text-white leading-tight">VeriTag</h1>
             <p className="text-xs text-gray-500 leading-tight">AI-verified claim registry on GenLayer</p>
