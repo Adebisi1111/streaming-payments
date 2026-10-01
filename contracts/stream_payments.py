@@ -126,14 +126,17 @@ class StreamPay(gl.contract.Contract):
 
     @gl.public.write
     def stop_stream(self, stream_id: str) -> None:
-        """Stop an active stream early."""
+        """Stop an active stream early. Only the streamer may do this."""
         stream = self.streams.get(stream_id)
         if not stream:
             raise Exception("stream not found")
+        if self._strip(stream.streamer) != self._strip(self._sender()):
+            raise Exception("only the streamer can stop")
         if stream.status != "active":
             raise Exception("stream already stopped")
         stream.status = "stopped"
         stream.end_time = u256(_now())
+        self.streams[stream_id] = stream
 
     @gl.public.write
     def withdraw(self, stream_id: str) -> u256:
@@ -153,6 +156,7 @@ class StreamPay(gl.contract.Contract):
         if stream.status == "active" and stream.end_time > u256(0):
             if u256(_now()) >= stream.end_time:
                 stream.status = "withdrawn"
+        self.streams[stream_id] = stream
         return payable_now
 
     # ---------- view ----------
