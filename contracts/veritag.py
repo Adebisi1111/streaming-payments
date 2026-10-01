@@ -28,7 +28,7 @@ WHY THIS IS A GOOD FIT FOR GENLAYER
     call and no gas assumption, so it runs fully within the capabilities the
     chain documents. Nothing here depends on an unimplemented feature.
 
-Consensus model: leader/validator pair via `gl.vm.run_nondet_unsafe`.
+Consensus model: leader/validator pair via `gl.vm.run_nondet`.
   * leader_fn  - fetch evidence, ask the LLM, return {verdict, excerpt}
   * validator_fn - fetch the SAME url itself, judge the SAME claim, and accept
                    only when its own verdict matches the leader's.
@@ -103,11 +103,12 @@ class VeriTag(gl.contract.Contract):
         leader and validators compare like with like instead of whole pages
         that may differ in whitespace or trailing markup.
         """
+        # The web Response exposes .status / .headers / .body -- verified by
+        # inspecting dir(response) on-chain. There is no .status_code.
         response = gl.nondet.web.request(url, method="GET")
-        if response.status_code >= 400:
-            raise gl.vm.UserError(
-                "evidence URL returned status " + str(response.status_code)
-            )
+        status = int(response.status)
+        if status >= 400:
+            raise gl.vm.UserError("evidence URL returned status " + str(status))
         body = response.body.decode("utf-8", errors="replace")
         # Collapse whitespace so trivial formatting differences do not cause a
         # spurious disagreement between validators.
@@ -162,11 +163,10 @@ class VeriTag(gl.contract.Contract):
                 judgement = self._judge(question, own)
             except Exception:
                 return False
-            if isinstance(leader_result, Exception):
-                return False
-            return judgement["supported"] == leader_result["supported"]
+            expected = leader_result.calldata if hasattr(leader_result, "calldata") else leader_result
+            return judgement["supported"] == expected["supported"]
 
-        result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
+        result = gl.vm.run_nondet(leader_fn, validator_fn)
         outcome = result.calldata if hasattr(result, "calldata") else result
 
         supported = str(outcome.get("supported", "no"))
