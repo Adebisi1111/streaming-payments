@@ -1,122 +1,109 @@
-# StreamPay — a verifiable streaming-payment ledger on GenLayer
+# VeriTag — an AI-verified claim registry on GenLayer
 
-StreamPay is an Intelligent Contract that computes and records **who is owed
-what, by whom, and when**, for a time-based payment stream. A streamer opens a
-stream against a receiver; the contract accrues an exact per-second entitlement
-that the receiver can claim at any time, and the streamer can stop early.
+Anyone can claim anything. A tweet says a package is safe. A vendor says a
+dependency has no known CVEs. A marketplace listing says an item is genuine.
+None of those claims carry weight on their own — there is nothing stopping the
+claimant from writing whatever is convenient.
 
-Every state transition is a GenLayer consensus-verified write, so the ledger is
-tamper-evident: the entitlement is provable, not merely asserted.
+VeriTag makes the claim checkable.
 
-- **Live app**: <https://adebisi1111.github.io/streaming-payments/>
-- **Deployed contract**: `0xCfe4C1082CB61195d51Db48b871656FB3b5B4Ae4` on GenLayer Studio dev
-- **Source**: [`contracts/stream_payments.py`](contracts/stream_payments.py)
+A claim is submitted together with an **evidence URL**. A leader validator
+fetches that page, extracts a bounded excerpt, and asks an LLM whether the
+content actually supports the claim. The other validators repeat the check
+independently — each does its own fetch and forms its own judgement — and
+consensus only commits when they agree. The verdict, the evidence excerpt, the
+submitter and a timestamp are recorded on-chain, so anyone can re-read the
+result and re-run the check themselves.
 
----
+## Why this needs GenLayer
 
-## Scope: what is and is not claimed
+VeriTag does not compute anything a normal contract could compute. The task is
+"fetch a page you have never seen, and decide whether it says what the claimant
+says it says." That needs a live HTTP request and a language model — exactly the
+two primitives that only an Intelligent Contract can do.
 
-This project is deliberately scoped to what it can prove. Please read this
-section before evaluating it.
+The AI is load-bearing, not decorative:
 
-| Verified on-chain | Not claimed |
+- the leader's fetch result is **not** trusted by the validators
+- each validator repeats the fetch and the judgement independently
+- a validator accepts only if it independently reaches the same conclusion
+- the commit happens only through `gl.vm.run_nondet_unsafe`, so a verdict the
+  committee cannot agree on is never written
+
+## What it does and does not do
+
+| | |
 |---|---|
-| `create_stream` — creates a stream, derives exact per-second rate | That GEN reaches the receiver's wallet on Studio dev |
-| `get_stream` / `list_streams` — read back accrued state | Any off-chain settlement guarantee |
-| `stop_stream` — freezes `end_time`, halts accrual at that instant | |
-| `withdraw` — claims only accrued, never more; no double-spend | |
-| Access control — only receiver claims, only streamer stops | |
-| Guards — zero-rate and over-withdrawal are rejected | |
+| **Verified** | evidence page is fetched over HTTP by the contract |
+| **Verified** | an LLM judges the excerpt against the claim |
+| **Verified** | validators independently repeat both steps |
+| **Verified** | verdict, excerpt, submitter and timestamp are stored on-chain |
+| **Verified** | consensus required — a split committee writes nothing |
+| **Not verified** | that the *source page itself* is truthful |
+| **Not verified** | long-term immutability of the underlying website |
 
-**Why payout is out of scope.** `withdraw` does invoke `emit_transfer`, the
-official Intelligent-Contract-to-EOA transfer path. On Studio dev that call
-finalises but moves no balance, because the chain itself states in its own UI:
+VeriTag answers "does this page support this claim?" — not "is this claim true
+in the world". The evidence is named in every record precisely so a reader can
+judge the source for themselves.
 
-> "The Studio currently does not support token transfers, contract-to-contract
-> interactions, or gas consumption."
+## Contract
 
-So payout is a **documented chain-layer boundary**, not a contract bug and not
-a contract guarantee. The internal accounting is complete and correct
-regardless. `emit_transfer` remains in the code as the intended settlement path
-for a chain that supports it.
+`contracts/veritag.py` — a GenLayer Intelligent Contract in Python.
 
-This project should be described as a **streaming-payment ledger**, not as
-"payments that move funds".
-
----
-
-## The accounting model
-
-For a stream of `amount` wei over `duration` seconds:
-
-```
-rate        = amount // duration_seconds        # exact integer division
-elapsed     = min(now, end_time) - start_time   # whole seconds
-accumulated = rate * elapsed
-available   = accumulated - claimed
-```
-
-Key properties:
-
-- **Exactness** — the rate is fixed at creation, so accrual never drifts and
-  whole-second accounting is exact. Verified: `5e18 // 3600 == 1388888888888888`.
-- **No double-spend** — `claimed` is cumulative and `available` is derived, so
-  repeated claims return the next slice rather than replaying the same one.
-- **Freeze on stop** — `stop_stream` pins `end_time` to the current instant, so
-  accrual stops there and cannot be extended by a later call.
-- **Zero-rate rejection** — a stream whose `amount // duration` would truncate
-  to `0` is rejected rather than silently created as unclaimable.
-- **Escrow guard** — a claim larger than the contract's held value is rejected,
-  so the ledger can never record an entitlement the contract could not honour.
-
----
-
-## Contract methods
-
-| Method | Type | Description |
+| method | kind | returns |
 |---|---|---|
-| `create_stream(receiver, amount, duration_seconds)` | write | Create a stream; returns the stream ID |
-| `stop_stream(stream_id)` | write | Streamer stops a stream early and freezes accrual |
-| `withdraw(stream_id)` | write | Receiver claims the accrued portion; returns that amount |
-| `fund()` | payable write | Escrow GEN to back future claims |
-| `escrowed()` | view | Value currently held by the contract |
-| `get_stream(stream_id)` | view | Full stream record |
-| `list_streams(address)` | view | Streams where the address is streamer or receiver |
+| `submit_claim(url, question)` | write | the new claim id |
+| `get_verdict(claim_id)` | view | the full verdict record |
+| `list_claims()` | view | every recorded claim |
+| `total_claims()` | view | count |
 
-Amounts are denominated in **wei**. The app converts whole-GEN input for you;
-calling the contract with `2` means 2 wei.
+`question` must be phrased so that **yes** means the page supports the claim:
 
----
+> "Does this page list Python 3.13 as a stable release?"
 
-## Tech stack
+The verdict is `supported` when the committee agrees the excerpt supports the
+claim, `not_supported` when it agrees it does not.
 
-- **Contract**: Python, GenLayer GenVM (runtime `py-genlayer:5jycge4q…`)
-- **Frontend**: React 19 + TypeScript + Tailwind CSS v4 + Vite
-- **Network**: GenLayer Studio dev — RPC `https://studio-dev.genlayer.com/api`, chain `61997`
+## Real uses
 
-The frontend talks to the chain directly over JSON-RPC. `gen_call` carries reads;
-`src/genlayer.ts` contains a GenVM calldata/result codec, including exact
-`bigint` handling because values such as the per-second rate exceed `2^53`.
+- **supply chain** — "this dependency version has no known advisories"
+- **content attestation** — "this page states X", with a permanent timestamp
+- **abuse filtering** — "this message contains a phishing link"
+- **off-chain event binding** — "this event happened", corroborated by independent fetches
 
----
+## Network
+
+Built and verified on **GenLayer Studio Next (dev)**, chain `61997`.
+
+- RPC: `https://studio-dev.genlayer.com/api`
+- Studio: `https://studio-next.genlayer.com`
+- Runtime: `py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng`
+
+The contract performs no token transfer and no contract-to-contract call, so
+none of the Studio dev limitations around those apply to VeriTag.
+
+## Frontend
+
+React + Vite + TypeScript + Tailwind CSS v4. Reads go through `gen_call` with
+GenVM's own tagged-varint codec; writes are handed to Studio, which signs them
+as consensus transactions.
+
+```
+npm install
+npm run dev
+npm run build
+```
 
 ## Project structure
 
 ```
 streaming-payments/
-├── contracts/stream_payments.py   # Intelligent Contract (Python)
-├── src/genlayer.ts                # Studio RPC + GenVM codec
-├── src/App.tsx                    # React UI
-├── src/main.tsx                   # Entry point
-├── src/index.css                  # Tailwind import
-├── vite.config.ts                 # Vite + Tailwind plugin
-└── package.json
+├── contracts/veritag.py      # Intelligent Contract (Python)
+├── src/genlayer.ts           # Studio RPC + GenVM codec
+├── src/App.tsx               # React UI
+└── vite.config.ts
 ```
 
-## Local development
+## Licence
 
-```bash
-npm install
-npm run dev      # Vite dev server on port 5173
-npm run build    # Production build to dist/
-```
+MIT

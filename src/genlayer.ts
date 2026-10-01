@@ -171,20 +171,17 @@ export function decodePayload(hex: string): Decoded {
 // Reads
 // ---------------------------------------------------------------------------
 
-export interface StreamRecord {
-  stream_id: string
-  streamer: string
-  receiver: string
-  /** wei per second — a u256, so it arrives as a bigint */
-  rate: bigint
-  start_time: bigint
-  end_time: bigint
-  withdrawn: bigint
-  status: string
-  /** total that has accrued so far (contract-computed) */
-  accumulated: bigint
-  /** accumulated - withdrawn (contract-computed) */
-  available: bigint
+export interface VerdictRecord {
+  claim_id: string
+  subject: string
+  url: string
+  question: string
+  /** 'supported' | 'refuted' | 'unverified' */
+  verdict: string
+  excerpt: string
+  submitter: string
+  timestamp: bigint
+  agreed_validators: string
 }
 
 /** Call a read method on the deployed contract. */
@@ -216,36 +213,42 @@ export async function callRead(
   return decodePayload(json.result)
 }
 
-/** Normalise a decoded contract record into a StreamRecord. */
-function toRecord(rec: Record<string, Decoded>, fallbackId: string): StreamRecord {
+/** Normalise a decoded claim into a VerdictRecord. */
+function toVerdict(rec: Record<string, Decoded>, fallbackId: string): VerdictRecord {
   const num = (v: Decoded | undefined): bigint =>
     typeof v === 'bigint' ? v : typeof v === 'number' ? BigInt(v) : 0n
   return {
-    stream_id: String(rec.stream_id ?? fallbackId),
-    streamer: String(rec.streamer ?? ''),
-    receiver: String(rec.receiver ?? ''),
-    rate: num(rec.rate),
-    start_time: num(rec.start_time),
-    end_time: num(rec.end_time),
-    withdrawn: num(rec.withdrawn),
-    status: String(rec.status ?? 'unknown'),
-    accumulated: num(rec.accumulated),
-    available: num(rec.available),
+    claim_id: String(rec.claim_id ?? fallbackId),
+    subject: String(rec.subject ?? ''),
+    url: String(rec.url ?? ''),
+    question: String(rec.question ?? ''),
+    verdict: String(rec.verdict ?? 'unverified'),
+    excerpt: String(rec.excerpt ?? ''),
+    submitter: String(rec.submitter ?? ''),
+    timestamp: num(rec.timestamp),
+    agreed_validators: String(rec.agreed_validators ?? ''),
   }
 }
 
-export async function listStreams(address: string): Promise<StreamRecord[]> {
-  const out = await callRead('list_streams', [address])
+export async function listClaims(): Promise<VerdictRecord[]> {
+  const out = await callRead('list_claims')
   if (!Array.isArray(out)) return []
-  return (out as Record<string, Decoded>[]).map((rec) => toRecord(rec, ''))
+  return (out as Record<string, Decoded>[]).map((rec) => toVerdict(rec, ''))
 }
 
-export async function getStream(streamId: string): Promise<StreamRecord | null> {
-  const out = await callRead('get_stream', [streamId])
+export async function getVerdict(claimId: string): Promise<VerdictRecord | null> {
+  const out = await callRead('get_verdict', [claimId])
   if (!out || typeof out !== 'object' || Array.isArray(out)) return null
   const rec = out as Record<string, Decoded>
   if (rec.error) return null
-  return toRecord(rec, streamId)
+  return toVerdict(rec, claimId)
+}
+
+export async function totalClaims(): Promise<bigint> {
+  const out = await callRead('total_claims')
+  if (typeof out === 'bigint') return out
+  if (typeof out === 'number') return BigInt(out)
+  return 0n
 }
 
 /** Read the deployed contract's balance (GEN). */
