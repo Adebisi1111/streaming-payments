@@ -136,6 +136,8 @@ class StreamPay(gl.contract.Contract):
 
         now_ts = u256(_now())
         rate = amount // duration_seconds
+        if rate == u256(0):
+            raise gl.vm.UserError("amount too small for duration: rate would be 0")
         streamer = self._strip(self._sender())
         stream_id = f"{streamer}-{rcv}-{now_ts}"
 
