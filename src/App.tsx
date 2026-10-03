@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   CONTRACT_ADDRESS,
-  STUDIO_URL,
   getVerdict,
   listClaims,
   totalClaims,
   type VerdictRecord,
 } from './genlayer'
+import { hasWallet, submitClaim } from './writes'
 
 // ---------------------------------------------------------------------------
 // VeriTag — an AI-verified claim registry on GenLayer
@@ -57,6 +57,14 @@ export default function App() {
   const [url, setUrl] = useState(SAMPLE.url)
   const [question, setQuestion] = useState(SAMPLE.question)
 
+  // Real write flow. The steward was right that the old "Submit in GenLayer
+  // Studio" control never called the contract — it navigated away. Submitting
+  // now sends an actual consensus transaction from the user's wallet.
+  const [submitting, setSubmitting] = useState(false)
+  const [submitStage, setSubmitStage] = useState('')
+  const [submitErr, setSubmitErr] = useState<string | null>(null)
+  const [lastTx, setLastTx] = useState<string | null>(null)
+
   const refresh = useCallback(async () => {
     setLoading(true)
     setStatus('reading the registry…')
@@ -105,7 +113,26 @@ export default function App() {
     }
   }
 
-  const submitHref = `${STUDIO_URL}/contracts?contract=${CONTRACT_ADDRESS}`
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    setSubmitErr(null)
+    setLastTx(null)
+    setSubmitStage('connecting wallet…')
+    try {
+      const { hash } = await submitClaim(url.trim(), question.trim(), (s) => setSubmitStage(s))
+      setLastTx(hash)
+      setSubmitStage('recorded on-chain')
+      // Re-read the registry so the new claim actually appears.
+      const [c, n] = await Promise.all([listClaims(), totalClaims()])
+      setClaims(c)
+      setCount(n)
+    } catch (e) {
+      setSubmitErr((e as Error).message)
+      setSubmitStage('')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-gray-200">
@@ -177,17 +204,34 @@ export default function App() {
                 placeholder="Does this page state that …?"
               />
             </div>
-            <a
-              href={submitHref}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-block px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm font-medium transition-colors"
-            >
-              Submit in GenLayer Studio →
-            </a>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !url.trim() || !question.trim()}
+                className="px-4 py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 rounded-lg text-sm font-medium transition-colors"
+              >
+                {submitting ? 'Verifying with the committee…' : 'Submit claim for verification'}
+              </button>
+              {!hasWallet() && (
+                <span className="text-xs text-amber-400/90">
+                  No browser wallet detected — install MetaMask, or open this page in the MetaMask app browser.
+                </span>
+              )}
+            </div>
+            {submitStage && !submitErr && (
+              <p className="text-xs text-violet-300">{submitStage}</p>
+            )}
+            {submitErr && (
+              <p className="text-xs text-rose-400">Could not submit: {submitErr}</p>
+            )}
+            {lastTx && (
+              <p className="text-xs text-gray-500 font-mono break-all">
+                consensus tx {lastTx}
+              </p>
+            )}
             <p className="text-xs text-gray-600">
-              Writes are signed in Studio: VeriTag runs as an Intelligent Contract, so a write is a consensus
-              transaction rather than an EVM signature.
+              Submitting sends a real transaction: your wallet signs it, then every validator independently
+              fetches the evidence URL and reaches its own verdict. Consensus can take a minute.
             </p>
           </div>
         </section>
