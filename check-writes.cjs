@@ -2,7 +2,7 @@
 // instead of navigating to Studio. Uses a mock EIP-1193 provider (this is a
 // headless VPS with no MetaMask), and asserts on what the app actually does.
 const { chromium } = require('/home/administrator/node_modules/playwright');
-const URL = process.env.TARGET || 'http://127.0.0.1:8906/streaming-payments/';
+const TARGET_URL = process.env.TARGET || 'http://127.0.0.1:8906/streaming-payments/';
 
 const MOCK = `
   window.__calls = { requestAccounts: 0, switchChain: 0, ethRequest: [] };
@@ -32,11 +32,15 @@ const MOCK = `
   const ok = (c, m) => { console.log(`   ${c ? 'ok  ' : 'FAIL'} ${m}`); if (!c) fails++; };
 
   // Fail loudly if the page navigates away — that was the original bug.
+  // Compare against the origin actually under test, so this works against both
+  // the local server and the live site (a hardcoded origin false-fired there).
+  const ORIGIN = new global.URL(TARGET_URL).origin;
+  const ALLOWED = ORIGIN + '/streaming-payments/';
   let navigatedAway = false;
-  page.on('framenavigated', (f) => { if (f === page.mainFrame() && !f.url().startsWith('http://127.0.0.1:8906/streaming-payments/')) navigatedAway = true; });
+  page.on('framenavigated', (f) => { if (f === page.mainFrame() && !f.url().startsWith(ALLOWED)) navigatedAway = true; });
 
   await page.addInitScript(MOCK);
-  await page.goto(URL, { waitUntil: 'networkidle' });
+  await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
   await page.waitForTimeout(3500);
 
   console.log('1. the old dead link is gone');
@@ -70,6 +74,8 @@ const MOCK = `
   const calls = await page.evaluate(() => window.__calls);
   ok(calls.requestAccounts > 0, `eth_requestAccounts called (${calls.requestAccounts}x)`);
   ok(calls.switchChain > 0, `wallet_switchEthereumChain called (${calls.switchChain}x)`);
+  ok(calls.ethRequest.includes('eth_sendTransaction'),
+     `wallet asked to SIGN a transaction (eth_sendTransaction)`);
   const want = '0x' + (61997).toString(16);
   ok(calls.switchedTo === want, `switched to chain ${calls.switchedTo} (Studio dev = ${want})`);
   ok(!navigatedAway, 'the page did NOT navigate away to Studio');
