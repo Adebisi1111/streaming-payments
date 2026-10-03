@@ -19,6 +19,19 @@ submitter and a timestamp are recorded on-chain.
 - **Network**: GenLayer Studio **dev** (chain `61997`), RPC `https://studio-dev.genlayer.com/api`
 - **Source**: [`contracts/veritag.py`](contracts/veritag.py)
 
+The linked source **is** the deployed contract — not a later revision of it. You
+can confirm that yourself against the chain:
+
+```bash
+genlayer network set studio-dev
+genlayer code 0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f > deployed.py
+diff deployed.py contracts/veritag.py
+```
+
+The only difference is trailing blank lines. Anyone reviewing this can verify the
+source, the deployed bytecode's source and the explorer address all refer to the
+same artifact.
+
 ---
 
 ## Verified working
@@ -49,6 +62,11 @@ The live frontend at <https://adebisi1111.github.io/streaming-payments/> was
 browser-verified against the deployed contract: it reads 3 claims, renders green
 `supported` and red `refuted` badges distinctly, and shows the evidence excerpt
 on every card.
+
+(The badge word `refuted` is the UI's label for the on-chain verdict
+`not_supported`. The contract stores only `supported` and `not_supported`;
+the frontend maps them for display and matches `not_supported` exactly first, so
+it can never misread one as the other.)
 
 ## Why this needs GenLayer
 
@@ -115,9 +133,11 @@ Three API details that are easy to get wrong, all confirmed on-chain:
 - The nondeterministic entry point is `gl.vm.run_nondet(leader, validator)`.
 - The validator receives a `Result` wrapper, so it must compare against
   `leader_res.calldata`, not the raw value.
-- There is no `gl.message.current_timestamp`. Transaction time comes from
-  `datetime.now(timezone.utc)`, which GenVM pins so every validator sees the
-  same value.
+- Transaction time comes from `datetime.now(timezone.utc)`. GenVM pins the
+  Python clock to the transaction timestamp, so every validator re-executing the
+  call sees the same value and the recorded time is deterministic. Verified
+  on-chain: the deployed code took this path and `claim-1` carries a real
+  timestamp (`2026-10-01 15:42:49Z`), not a zero fallback.
 
 Consensus v0.6 charges fees on deploy and write. Hand-signed EVM transactions
 are rejected at admission with `NO_MAJORITY` and zero rounds, because they
@@ -127,6 +147,12 @@ carry no fee distribution. Use the CLI so it can build the estimate:
 genlayer network set studio-dev
 genlayer deploy --contract contracts/veritag.py --fees '<preset>' --fee-value <wei>
 genlayer write <address> submit_claim --args <url> <question> --fees '<preset>' --fee-value <wei>
+```
+
+Contract arguments always go through `--args`; passing them positionally fails
+with `too many arguments for 'call'`.
+
+```bash
 ```
 
 `genlayer estimate-fees <address> <method> --args ...` prints a ready-to-use
@@ -210,7 +236,7 @@ touching the browser UI:
 ```bash
 genlayer network set studio-dev
 genlayer call 0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f list_claims
-genlayer call 0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f get_verdict claim-1
+genlayer call 0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f get_verdict --args claim-1
 ```
 
 So a missing wallet degrades the review, it does not block it: the recorded
