@@ -181,6 +181,41 @@ An earlier build offered a "Submit in GenLayer Studio" link that navigated to
 Studio instead of calling the contract. That was removed: it read as a write but
 performed none.
 
+### Note for reviewers
+
+**Reading the registry needs nothing** — no wallet, no funds, no setup. Open the
+app and the three recorded claims load straight from Studio dev over RPC.
+
+**Submitting a new claim needs a wallet with Studio-dev funds.** If you are
+reviewing on a laptop, this is the step that will stop you, and it is a funding
+requirement rather than a defect:
+
+| Requirement | Value |
+| --- | --- |
+| Wallet | MetaMask, or any EIP-1193 wallet |
+| Network | GenLayer Studio **dev**, chain `61997` (`0xf22d`) |
+| RPC | `https://studio-dev.genlayer.com/api` |
+| Funds | GEN on Studio dev, to cover the transaction fee |
+
+The app requests the network switch itself on connect, and shows an explicit
+message when no wallet is detected rather than failing silently.
+
+For funds, GenLayer Studio serves a faucet at
+`https://studio.genlayer.com/faucet`. (The public
+`testnet-faucet.genlayer.foundation` faucet is for **Asimov**, chain `4221`, and
+will not fund a `61997` wallet.) If the Studio faucet does not serve `61997`
+either, a reviewer can still verify everything on-chain through the CLI without
+touching the browser UI:
+
+```bash
+genlayer network set studio-dev
+genlayer call 0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f list_claims
+genlayer call 0x9973a029E5E0b6AdfA8aa5f56fA4F9bd1C60584f get_verdict claim-1
+```
+
+So a missing wallet degrades the review, it does not block it: the recorded
+verdicts, the excerpts and the consensus history are all readable without one.
+
 ## Project structure
 
 ```
