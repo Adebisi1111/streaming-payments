@@ -135,23 +135,62 @@ network at all.
 
 ## Frontend
 
-React + Vite + TypeScript + Tailwind CSS v4. Reads go through `gen_call` with
-GenVM's own tagged-varint codec in `src/genlayer.ts`. Writes are submitted from
-the GenLayer CLI, which builds the v0.6 fee fields the chain requires.
+React + Vite + TypeScript + Tailwind CSS v4.
+
+- **Reads** go through `gen_call` with GenVM's own tagged-varint codec in
+  `src/genlayer.ts`.
+- **Writes** go through `src/writes.ts` on `genlayer-js` `2.0.0-rc.1`, using the
+  `studioDevnet` chain definition (`61997`) that matches this deployment's RPC.
+  The user signs with their own browser wallet; the frontend holds no keys and
+  requires no backend.
+
+A GenLayer write is a **rollup transaction with a fee policy**, not an EVM
+`eth_sendRawTransaction`. Two consequences the code handles explicitly:
+
+1. `estimateTransactionFeesForWrite` must run before `writeContract`, or
+   admission rejects the transaction. The estimate is cached per page load.
+2. `ACCEPTED` / `FINALIZED` does **not** mean the contract call succeeded, so
+   the finalized transaction is checked with `isSuccessful()` before success is
+   reported.
+
+The CLI remains available for scripted writes and for redeploying.
 
 ```bash
 npm install
 npm run dev
 npm run build
+node check-writes.cjs   # asserts the frontend calls the contract, not a link
 ```
+
+### Submitting from the UI
+
+The submit control signs a real transaction. It requires:
+
+- a browser wallet (MetaMask, or the MetaMask app browser);
+- that wallet switched to Studio dev (`chainId 61997` / `0xf22d`) — the app
+  requests the switch on connect;
+- funds on Studio dev to cover the fee.
+
+Consensus is AI-powered, so a submit can take around a minute: each validator
+independently fetches the evidence URL and reaches its own verdict. The UI shows
+the live stage and, on success, the consensus transaction hash. Without a wallet
+the control is present but reports why it cannot submit instead of failing
+silently.
+
+An earlier build offered a "Submit in GenLayer Studio" link that navigated to
+Studio instead of calling the contract. That was removed: it read as a write but
+performed none.
 
 ## Project structure
 
 ```
-veritag/
-├── contracts/veritag.py   # Intelligent Contract (Python)
-├── src/genlayer.ts        # Studio RPC + GenVM codec
-├── src/App.tsx            # React UI
+streaming-payments/
+├── contracts/veritag.py        # Intelligent Contract (Python) — the deployed one
+├── contracts/stream_payments.py# unused earlier StreamPay draft, kept for history
+├── src/genlayer.ts             # Studio RPC + GenVM codec (reads)
+├── src/writes.ts               # wallet-signed consensus transactions (writes)
+├── src/App.tsx                 # React UI
+├── check-writes.cjs            # asserts the UI calls the contract
 └── vite.config.ts
 ```
 
